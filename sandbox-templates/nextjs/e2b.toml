@@ -1,0 +1,17 @@
+# This is a config for E2B sandbox template.
+# You can use template ID (q49w1swnsgzdlrlhlbq9) or template name (prompt-deck-test-2) to create a sandbox:
+
+# Python SDK
+# from e2b import Sandbox, AsyncSandbox
+# sandbox = Sandbox("prompt-deck-test-2") # Sync sandbox
+# sandbox = await AsyncSandbox.create("prompt-deck-test-2") # Async sandbox
+
+# JS SDK
+# import { Sandbox } from 'e2b'
+# const sandbox = await Sandbox.create('prompt-deck-test-2')
+
+team_id = "fb3e27e1-0c35-4a36-afc9-ba535a6cb7ee"
+start_cmd = "/compile_page.sh"
+dockerfile = "e2b.Dockerfile"
+template_name = "prompt-deck-test-2"
+template_id = "q49w1swnsgzdlrlhlbq9"
