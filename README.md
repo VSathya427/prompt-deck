@@ -1,36 +1,52 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
 
-## Getting Started
+# 📊 PromptDeck  
+_Automated AI-Powered Presentation Generator_
 
-First, run the development server:
+## 🚀 Overview
+**PromptDeck** is a framework that auto-generates beautiful HTML presentations from structured prompts.  
+It leverages **Impress.js** for transitions and **Next.js** for serving interactive decks, while enforcing accessibility and design constraints to ensure professional, readable slides every time.
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
-```
+The goal: **turn prompts into production-ready slide decks** with minimal manual effort.
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+---
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+## ✨ Features Implemented (so far)
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- 🔹 **Automated Deck Creation**
+  - Converts structured prompts into fully themed HTML slides.  
+  - Each deck enforces a consistent theme, font, and style.
 
-## Learn More
+- 🔹 **Impress.js Integration**
+  - Adds smooth 3D transitions and navigation controls.  
+  - User flow: deck only advances after pressing `Enter` (no auto-redirects).  
 
-To learn more about Next.js, take a look at the following resources:
+- 🔹 **Next.js Component Orchestration**
+  - Sandboxes AI-generated decks into cohesive Next.js components.  
+  - Prevents slide overlays and layout bugs by enforcing clean DOM structure.
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+- 🔹 **Accessibility & Readability Fixes**
+  - Ensures text never renders white-on-white.  
+  - Normalizes bullet-point formatting (no redundant numbered lists).  
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+- 🔹 **Task-Summary Prompting**
+  - Each generation run ends with a clean `<task_summary>` describing what was created.  
+  - Designed for future pipeline automation & auditing.
 
-## Deploy on Vercel
+---
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+## 📌 Current Progress
+✅ Fixed initial landing page (legibility & no auto-redirects)  
+✅ Prevented overlay bug between multiple decks  
+✅ Standardized bullet formatting across slides  
+✅ Added structured `<task_summary>` to enforce completion compliance  
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+---
+
+## 🔮 Next Steps
+
+- [ ] Build interactive Messages UI & Project Header to enable real-time collaboration and contextual navigation across projects.
+- [ ] Implement advanced views (Fragment & Code View) for inspecting AI-generated content and editing output inline.
+- [ ] Develop Home Page & customizable Themes for better UX, branding consistency, and streamlined user onboarding.
+- [ ] Integrate Authentication & Billing modules to support secure access control and subscription-based usage.
+
+
