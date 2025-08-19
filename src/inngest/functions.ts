@@ -185,7 +185,6 @@
 //     },
 // );
 
-
 import { openai, gemini, createAgent, createTool, AnyZodType, createNetwork, type Tool } from "@inngest/agent-kit";
 import { inngest } from "./client";
 import { Sandbox } from "@e2b/code-interpreter";
@@ -208,16 +207,11 @@ export const codeAgentFunction = inngest.createFunction(
             const sandbox = await Sandbox.create("prompt-deck-test-2");
             return sandbox.sandboxId;
         });
-        const RawAsset = z.object({
-            path: z.string().min(1),          // e.g., "public/styles/theme.css" or "public/images/bg.svg"
-            content: z.string().default(""),  // raw file content
+
+        const CreatePresentationSchema = z.object({
+            deckHtml: z.string().min(1),  // full <!doctype html>... for public/deck.html
         });
-        const CreatePresentationRaw = z.object({
-            mode: z.literal("raw"),
-            deckHtml: z.string().min(1),        // full <!doctype html>... for public/deck.html
-            landingPageTsx: z.string().min(1),  // full "use client" React component for app/page.tsx
-            assets: z.array(RawAsset).optional()// optional extra files
-        });
+
         const codeAgent = createAgent<AgentState>({
             name: "code-agent",
             description: "A code agent that can create interactive presentations using HTML, CSS, JavaScript and presentation frameworks like Reveal.js in a sandboxed environment.",
@@ -259,7 +253,7 @@ export const codeAgentFunction = inngest.createFunction(
                 }),
                 createTool({
                     name: "createOrUpdateFile",
-                    description: "Create or update presentation files including React components, styles, and interactive elements with export capabilities.",
+                    description: "Create or update files including React components, styles, and other project files.",
                     parameters: z.object({
                         files: z.array(
                             z.object({
@@ -352,48 +346,29 @@ export const codeAgentFunction = inngest.createFunction(
                 }),
                 createTool({
                     name: "createPresentation",
-                    description:
-                        "Write a complete Impress.js deck (public/deck.html) and a themed landing page (app/page.tsx). RAW mode only.",
-                    parameters: CreatePresentationRaw as unknown as AnyZodType,
-                    handler: async (params, { step, network }) => {
-                        return await step!.run("createPresentation(raw)", async () => {
-                            // Guard: enforce RAW mode
-                            if (params.mode !== "raw") {
-                                throw new Error('createPresentation only supports mode: "raw"');
+                    description: "Create a complete Impress.js presentation deck and write it to public/deck.html",
+                    parameters: CreatePresentationSchema as unknown as AnyZodType,
+                    handler: async ({ deckHtml }, { step, network }: Tool.Options<AgentState>) => {
+                        const newFiles = await step!.run("createPresentation", async () => {
+                            try {
+                                const updatedFiles = network.state.data.files || {};
+                                const sandbox = await getSandbox(sandboxId);
+
+                                // Write deck.html
+                                await sandbox.files.write("public/deck.html", deckHtml);
+                                updatedFiles["public/deck.html"] = deckHtml;
+
+                                return updatedFiles;
+                            } catch (error) {
+                                return "Error: " + error;
                             }
-
-                            const sandbox = await getSandbox(sandboxId); // assumes sandboxId in outer scope
-                            const files = { ...(network.state.data.files || {}) };
-
-                            // 1) Write deck.html
-                            await sandbox.files.write("public/deck.html", params.deckHtml);
-                            files["public/deck.html"] = params.deckHtml;
-
-                            // 2) Write landing page
-                            await sandbox.files.write("app/page.tsx", params.landingPageTsx);
-                            files["app/page.tsx"] = params.landingPageTsx;
-
-                            // 3) Optional extra assets (safe iterate)
-                            const assets = Array.isArray(params.assets) ? params.assets : [];
-                            for (const asset of assets) {
-                                // allow only safe roots
-                                if (
-                                    asset.path.startsWith("public/") ||
-                                    asset.path.startsWith("app/") ||
-                                    asset.path.startsWith("styles/") ||
-                                    asset.path.startsWith("lib/")
-                                ) {
-                                    await sandbox.files.write(asset.path, asset.content ?? "");
-                                    files[asset.path] = asset.content ?? "";
-                                } else {
-                                    // ignore silently or console.warn if you prefer
-                                    // console.warn(`[createPresentation] Skipping unsafe path: ${asset.path}`);
-                                }
-                            }
-
-                            network.state.data.files = files;
-                            return "/deck.html";
                         });
+
+                        if (typeof newFiles === "object") {
+                            network.state.data.files = newFiles;
+                        }
+
+                        return "Presentation deck created at /deck.html";
                     },
                 }),
             ],
@@ -426,10 +401,20 @@ export const codeAgentFunction = inngest.createFunction(
         })
 
         const result = await network.run(event.data.value);
-        
-        const isError =
-            !result.state.data.summary ||
-            Object.keys(result.state.data.files || {}).length === 0;
+
+
+        const hasDeck = !!result.state.data.files?.["public/deck.html"];
+        const hasLanding = !!result.state.data.files?.["app/page.tsx"];
+        const hasSummary = !!result.state.data.summary;
+
+        console.log("summary:", result.state.data.summary);
+        console.log("files:", Object.keys(result.state.data.files || {}));
+        console.log("hasDeck:", hasDeck);
+        console.log("hasLanding:", hasLanding);
+        console.log("hasSummary:", hasSummary);
+
+        // Only require deck and summary - landing page is optional for presentations
+        const isError = !(hasDeck && hasSummary);
 
         await step.run("start-static-server", async () => {
             const sandbox = await getSandbox(sandboxId);
@@ -449,22 +434,25 @@ export const codeAgentFunction = inngest.createFunction(
             if (isError) {
                 return await prisma.message.create({
                     data: {
+                        projectId: event.data.projectId,
                         content: "Something went wrong while running the code agent.",
                         role: "ASSISTANT",
                         type: "ERROR",
                     }
                 });
             }
-            await prisma.message.create({
+
+            return await prisma.message.create({
                 data: {
-                    content: result.state.data.summary || "No summary provided",
+                    projectId: event.data.projectId,
+                    content: result.state.data.summary,
                     role: "ASSISTANT",
                     type: "RESULT",
                     fragment: {
                         create: {
                             sandboxUrl: sandboxUrl,
                             title: "Presentation",
-                            files: result.state.data.files || {},
+                            files: result.state.data.files,
                         }
                     }
                 }
