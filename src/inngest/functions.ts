@@ -215,7 +215,7 @@ export const codeAgentFunction = inngest.createFunction(
         const codeAgent = createAgent<AgentState>({
             name: "code-agent",
             description: "A code agent that can create interactive presentations using HTML, CSS, JavaScript and presentation frameworks like Reveal.js in a sandboxed environment.",
-            system: `${PROMPT}\n\nFocus on creating presentations instead of websites. Use frameworks like Reveal.js, Impress.js, or create custom HTML/CSS/JS presentations with smooth animations and professional layouts. Always wrap your final summary in <task_summary> tags.`,
+            system: `${PROMPT}.`,
             model: gemini({
                 model: "gemini-2.5-pro",
                 defaultParameters: { generationConfig: { temperature: 0.1 } },
@@ -435,7 +435,7 @@ export const codeAgentFunction = inngest.createFunction(
                 return await prisma.message.create({
                     data: {
                         projectId: event.data.projectId,
-                        content: "Something went wrong while running the code agent.",
+                        content: `Something went wrong while running the code agent. Please try again!`,
                         role: "ASSISTANT",
                         type: "ERROR",
                     }
