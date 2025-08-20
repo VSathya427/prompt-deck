@@ -95,7 +95,7 @@ const AssistantMessage = ({
                     {format(createdAt, "HH:mm 'on' MMM dd, yyyy")}
                 </span>
             </div>
-            <div className="pl-10 flex flex-col gap-y-4">
+            <div className="pl-9.5 flex flex-col gap-y-4">
                 <span>{content}</span>
                 {fragment && type === "RESULT" && (
                     <FragmentCard 
