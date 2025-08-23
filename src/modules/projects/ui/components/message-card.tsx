@@ -88,7 +88,7 @@ const AssistantMessage = ({
                     alt="prompt-deck"
                     width={22}
                     height={15}
-                    className="shrink-0 dark:invert dark:brightness-0 dark:contrast-100"
+                    className="shrink-0"
                 />
                 <span className="text-sm font-medium">Prompt-Deck</span>
                 <span className="text-xs text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100">

@@ -51,7 +51,7 @@ export const MessageLoading = () =>{
                     alt="prompt-deck"
                     width={22}
                     height={15}
-                    className="shrink-0 dark:invert dark:brightness-0 dark:contrast-100"
+                    className="shrink-0"
                 />
                 <span className="text-sm font-medium">PromptDeck</span>
             </div>

@@ -43,7 +43,7 @@ export const ProjectsList = () => {
                                     alt="prompt-deck"
                                     width={40}
                                     height={27} 
-                                    className= "object-contain md:block dark:invert dark:brightness-0 dark:contrast-100"
+                                    className= "object-contain"
                                 />
                                 <div className="flex flex-col">
                                     <h3 className="truncate font-medium">

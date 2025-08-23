@@ -68,8 +68,6 @@ export const projectsRouter = createTRPCRouter({
                     projectId: createdProject.id,
                 },
             });
-
             return createdProject;
-
         })
 })

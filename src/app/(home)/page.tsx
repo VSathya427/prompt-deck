@@ -12,7 +12,7 @@ const Page = () => {
             alt="prompt-deck"
             width={61}
             height={42}
-            className="hidden md:block dark:invert dark:brightness-0 dark:contrast-100"
+            className="hidden md:block"
           />
         </div>
         <h1 className="text-2xl md:text-5xl font-bold text-center">
