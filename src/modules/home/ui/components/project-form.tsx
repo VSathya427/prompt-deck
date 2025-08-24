@@ -18,6 +18,7 @@ import { toast } from "sonner";
 import { useRouter } from "next/navigation";
 
 import { PROJECT_TEMPLATES } from "../../constants";
+import { useClerk } from "@clerk/nextjs";
 
 
 const formSchema = z.object({
@@ -29,6 +30,7 @@ const formSchema = z.object({
 export const ProjectForm = () => {
     const router = useRouter();
     const trpc = useTRPC();
+    const clerk = useClerk();
     const queryClient = useQueryClient();
     const form = useForm<z.infer<typeof formSchema>>({
         resolver:  zodResolver(formSchema),
@@ -48,6 +50,9 @@ export const ProjectForm = () => {
         onError: (error) => {
             //TODO: Redirect to pricing page if specefic error
             toast.error(error.message);
+            if(error.data?.code === "UNAUTHORIZED"){
+                clerk.openSignIn();
+            }
         }
     }))
     
