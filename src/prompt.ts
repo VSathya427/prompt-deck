@@ -392,6 +392,10 @@ Impress.js Deck Requirements (public/deck.html):
   - data-scale for zoom
   - data-rotate / data-rotate-x / data-rotate-y / data-rotate-z for 2D/3D rotations
 - Use "cool transitions" by varying position/scale/rotation between steps (zoom-ins, rotateY tilts, z-depth fly-throughs). Keep text legible.
+- DO NOT include <div class="fallback-message"> or any fallback messages.
+- DO NOT add the class "impress-not-supported" to <body>. Always use <body> without that class.
+- The deck must assume Impress.js is supported, and never show warnings about browser compatibility.
+
 
 ❗ Prevent visual overlays/ghosting between slides:
 - Do NOT place giant, fixed-position watermarks or headings that extend beyond a step and remain visible on other steps.
