@@ -185,12 +185,12 @@
 //     },
 // );
 
-import { openai, gemini, createAgent, createTool, AnyZodType, createNetwork, type Tool } from "@inngest/agent-kit";
+import { openai, gemini, createAgent, createTool, AnyZodType, createNetwork, type Tool, Message, createState } from "@inngest/agent-kit";
 import { inngest } from "./client";
 import { Sandbox } from "@e2b/code-interpreter";
-import { getSandbox, lastAssistantTextMessageContent } from "./utils";
+import { getSandbox, lastAssistantTextMessageContent, parseAgentOutput } from "./utils";
 import { z } from "zod";
-import { PROMPT } from "@/prompt";
+import { PRESENTATION_FRAGMENT_TITLE_PROMPT, PRESENTATION_RESPONSE_PROMPT, PROMPT } from "@/prompt";
 import { prisma } from "@/lib/db";
 
 interface AgentState {
@@ -212,12 +212,44 @@ export const codeAgentFunction = inngest.createFunction(
             deckHtml: z.string().min(1),  // full <!doctype html>... for public/deck.html
         });
 
+        const previousMessages = await step.run("get-previous-messages", async () => {
+           const formattedMessages: Message[] = [];
+           const messages = await prisma.message.findMany({
+                where: {
+                    projectId: event.data.projectId,
+                },
+                orderBy: {
+                    createdAt: "desc", // TODO: Change to "asc" if ai doesnt understand whats the latest message
+                },
+           });
+
+           for(const message of messages){
+            formattedMessages.push({
+                type: "text",
+                role: message.role === "ASSISTANT" ? "assistant":"user",
+                content: message.content,
+            })
+           }
+
+           return formattedMessages;
+        });
+
+        const state = createState<AgentState>(
+            {
+                summary: "",
+                files:{},
+            },
+            {
+                messages: previousMessages,
+            },
+        );
+
         const codeAgent = createAgent<AgentState>({
             name: "code-agent",
             description: "A code agent that can create interactive presentations using HTML, CSS, JavaScript and presentation frameworks like Reveal.js in a sandboxed environment.",
             system: `${PROMPT}.`,
             model: gemini({
-                model: "gemini-2.5-pro",
+                model: "gemini-2.5-flash",
                 defaultParameters: { generationConfig: { temperature: 0.1 } },
             }),
             // model: openai({ model: "gpt-4o" }),
@@ -391,6 +423,7 @@ export const codeAgentFunction = inngest.createFunction(
             name: "coding-agent-network",
             agents: [codeAgent],
             maxIter: 15,
+            defaultState: state,
             router: async ({ network }) => {
                 const summary = network.state.data.summary;
                 if (summary) {
@@ -400,7 +433,32 @@ export const codeAgentFunction = inngest.createFunction(
             }
         })
 
-        const result = await network.run(event.data.value);
+        const result = await network.run(event.data.value, { state });
+        
+
+        const fragmentTitleGenerator = createAgent({
+            name:"fragment-title-generator",
+            description:"generates title for fragments",
+            system: PRESENTATION_FRAGMENT_TITLE_PROMPT,
+            model:gemini({
+                model: "gemini-1.5-flash-8b",
+            }),
+        });
+
+        const responseGenerator = createAgent({
+            name: "response-generator",
+            description: "generates responses",
+            system: PRESENTATION_RESPONSE_PROMPT,
+            model: gemini({
+                model: "gemini-1.5-flash-8b",
+            }),
+        });
+
+        const { output: fragmentTitleOutput } = await fragmentTitleGenerator.run(result.state.data.summary);
+        const { output: responseOutput } = await responseGenerator.run(result.state.data.summary);
+
+
+    
 
 
         const hasDeck = !!result.state.data.files?.["public/deck.html"];
@@ -413,7 +471,7 @@ export const codeAgentFunction = inngest.createFunction(
         console.log("hasLanding:", hasLanding);
         console.log("hasSummary:", hasSummary);
 
-        // Only require deck and summary - landing page is optional for presentations
+        // Only require deck and summgit stary - landing page is optional for presentations
         const isError = !(hasDeck && hasSummary);
 
         await step.run("start-static-server", async () => {
@@ -445,13 +503,13 @@ export const codeAgentFunction = inngest.createFunction(
             return await prisma.message.create({
                 data: {
                     projectId: event.data.projectId,
-                    content: result.state.data.summary,
+                    content: parseAgentOutput(responseOutput),
                     role: "ASSISTANT",
                     type: "RESULT",
                     fragment: {
                         create: {
                             sandboxUrl: sandboxUrl,
-                            title: "Presentation",
+                            title: parseAgentOutput(fragmentTitleOutput),
                             files: result.state.data.files,
                         }
                     }
@@ -460,7 +518,7 @@ export const codeAgentFunction = inngest.createFunction(
         });
 
         return {
-            url: sandboxUrl + "/deck.html",
+            url: sandboxUrl,
             title: "Presentation",
             files: result.state.data.files,
             summary: result.state.data.summary,
