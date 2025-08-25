@@ -53,7 +53,7 @@ export const MessageLoading = () =>{
                     height={15}
                     className="shrink-0"
                 />
-                <span className="text-sm font-medium">PromptDeck</span>
+                <span className="text-sm font-medium">prompt-deck</span>
             </div>
             <div className="pl-9.5 flex flex-col gap-y-4">
                 <ShimmerMessages />

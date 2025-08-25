@@ -120,7 +120,7 @@
   --popover: oklch(0.9950 0.0030 50.0000);
   /* Warm popover background */
   --popover-foreground: oklch(0 0 0);
-  --primary: oklch(0.7500 0.1830 55.9340);
+  --primary: oklch(74.581% 0.1803 56.766);
   /* Your orange-400 */
   --primary-foreground: oklch(1.0000 0 0);
   --secondary: oklch(0.9540 0.0063 55.9340);
