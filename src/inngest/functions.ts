@@ -1,189 +1,3 @@
-// import { openai, gemini, createAgent, createTool, AnyZodType, createNetwork, type Tool } from "@inngest/agent-kit";
-// import { inngest } from "./client";
-// import { Sandbox } from "@e2b/code-interpreter";
-// import { getSandbox, lastAssistantTextMessageContent } from "./utils";
-// import { z } from "zod";
-// import { PROMPT } from "@/prompt";
-// import { prisma } from "@/lib/db";
-
-// interface AgentState {
-//     summary: string;
-//     files: { [path: string]: string };
-// };
-
-// export const codeAgentFunction = inngest.createFunction(
-//     { id: "code-agent" },
-//     { event: "code-agent/run" },
-//     async ({ event, step }) => {
-//         const sandboxId =  await step.run("get-sandbox-id", async () => {
-//             const sandbox = await Sandbox.create("prompt-deck-test-2");
-//             return sandbox.sandboxId;
-//         });
-//             const codeAgent = createAgent<AgentState>({
-//             name: "code-agent",
-//             description: "A code agent that can write and modify code in a sandboxed Next.js environment.",
-//             system: PROMPT,
-//             model: gemini({
-//                 model:"gemini-2.5-pro",
-//                 defaultParameters: { generationConfig: { temperature: 0.1 } },
-//             }),
-//             // model: openai({ model: "gpt-4o" }),
-//             tools: [
-//                 createTool({
-//                     name: "terminal",
-//                     description: "Use the terminal to run commands in the sandbox.",
-//                     parameters: z.object({
-//                         command: z.string(),
-//                     }) as unknown as AnyZodType,
-//                     handler: async ({ command }, { step }) => {
-//                         return await step?.run("terminal",async () => {
-//                             const buffers = {stdout:"", stderr:""};
-//                             try {
-//                                 const sandbox = await getSandbox(sandboxId);
-//                                 const result = await sandbox.commands.run(command, {
-//                                     onStdout(data: string) {
-//                                         buffers.stdout += data;
-//                                     },
-//                                     onStderr(data: string) {
-//                                         buffers.stderr += data;
-//                                     },
-//                                 });
-//                                 return result.stdout;
-//                             } catch (error) {
-//                                 console.error(
-//                                     `Command failed: ${error} \nstdoud: ${buffers.stdout} \nstderr: ${buffers.stderr}`,
-//                                 );
-//                                 return `Command failed: ${error} \nstdoud: ${buffers.stdout} \nstderr: ${buffers.stderr}`;
-//                             }
-//                         });
-//                     }
-//                 }),
-//                 createTool({
-//                     name: "createOrUpdateFile",
-//                     description: "Create or update a file in the sandbox.",
-//                     parameters: z.object({
-//                         files: z.array(
-//                             z.object({
-//                                 path: z.string(),
-//                                 content: z.string(),
-//                             }),
-//                         )
-//                     }),
-//                     handler: async ({ files }, { step, network }: Tool.Options<AgentState>) => {
-//                         const newFiles = await step?.run("createOrUpdateFiles", async () => {
-//                             try {
-//                                 const updatedFiles = network.state.data.files || {};
-//                                 const sandbox = await getSandbox(sandboxId);
-//                                 for (const file of files) {
-//                                     await sandbox.files.write(file.path, file.content);
-//                                     updatedFiles[file.path] = file.content;
-//                                 }
-//                                 return updatedFiles;
-//                             } catch (error) {
-//                                 return "Error :"+error;
-//                             }
-//                         });
-//                         if(typeof newFiles === "object") {
-//                             network.state.data.files = newFiles;
-//                         }
-//                     }
-//                 }),
-//                 createTool({
-//                     name: "readFiles",
-//                     description: "Read a file from the sandbox.",
-//                     parameters: z.object({
-//                         files: z.array(z.string()),
-//                     }),
-//                     handler: async ({ files }, { step }) => {
-//                         return await step?.run("readFiles", async () => {
-//                             try {
-//                                 const sandbox = await getSandbox(sandboxId);
-//                                 const contents = [];
-//                                 for (const file of files) {
-//                                     const content = await sandbox.files.read(file);
-//                                     contents.push({ path: file, content });
-//                                 }
-//                                 return JSON.stringify(contents);
-//                             } catch (error) {
-//                                 return "Error reading files: " + error;
-//                             }
-//                         })
-//                     },
-//                 }),
-//             ],
-//             lifecycle:{
-//                 onResponse: async ( { result, network }) => {
-//                     const lastAssistantMessageText = 
-//                      lastAssistantTextMessageContent(result);
-
-//                     if(lastAssistantMessageText && network){
-//                         if(lastAssistantMessageText.includes("<task_summary>")){
-//                             network.state.data.summary = lastAssistantMessageText;
-//                         }
-//                     }
-//                     return result;
-//                 },
-//             }
-//         });
-
-//         const network = createNetwork<AgentState>({
-//             name: "coding-agent-network",
-//             agents: [codeAgent],
-//             maxIter: 15,
-//             router: async ({network}) => {
-//                 const summary = network.state.data.summary;
-//                 if(summary){
-//                     return;
-//                 }
-//                 return codeAgent;
-//             }
-//         })
-
-//         const result = await network.run(event.data.value);
-//         const isError = 
-//             !result.state.data.summary ||
-//             Object.keys(result.state.data.files || {}).length === 0;
-
-//         const sandboxUrl = await step.run("get-sandbox-url", async () => {
-//             const sandbox = await Sandbox.connect(sandboxId);
-//             const host = sandbox.getHost(3000);
-//             return "https://"+host;
-//         });
-
-//         await step.run("save-result", async () => {
-//             if(isError) {
-//                 return await prisma.message.create({
-//                     data:{
-//                         content: "Somthing went wrong while running the code agent.",
-//                         role: "ASSISTANT",
-//                         type: "ERROR",
-//                     }
-//                 });
-//             }
-//             await prisma.message.create({
-//                 data: {
-//                     content: result.state.data.summary || "No summary provided",
-//                     role: "ASSISTANT",
-//                     type: "RESULT",
-//                     fragment: {
-//                         create: {
-//                             sandboxUrl: sandboxUrl,
-//                             title: "Fragment",
-//                             files: result.state.data.files || {},
-//                         }
-//                     }
-//                 }
-//             })
-//         });
-
-//         return { 
-//             url: sandboxUrl,
-//             title: "Fragment",
-//             files: result.state.data.files,
-//             summary: result.state.data.summary,
-//          };
-//     },
-// );
 
 import { openai, gemini, createAgent, createTool, AnyZodType, createNetwork, type Tool, Message, createState } from "@inngest/agent-kit";
 import { inngest } from "./client";
@@ -204,7 +18,7 @@ export const codeAgentFunction = inngest.createFunction(
     async ({ event, step }) => {
         const sandboxId = await step.run("get-sandbox-id", async () => {
             // Use a presentation-focused sandbox environment
-            const sandbox = await Sandbox.create("prompt-deck-test-2");
+            const sandbox = await Sandbox.create("prompt-deck-pynext");
             return sandbox.sandboxId;
         });
 
@@ -213,31 +27,31 @@ export const codeAgentFunction = inngest.createFunction(
         });
 
         const previousMessages = await step.run("get-previous-messages", async () => {
-           const formattedMessages: Message[] = [];
-           const messages = await prisma.message.findMany({
+            const formattedMessages: Message[] = [];
+            const messages = await prisma.message.findMany({
                 where: {
                     projectId: event.data.projectId,
                 },
                 orderBy: {
                     createdAt: "desc", // TODO: Change to "asc" if ai doesnt understand whats the latest message
                 },
-           });
+            });
 
-           for(const message of messages){
-            formattedMessages.push({
-                type: "text",
-                role: message.role === "ASSISTANT" ? "assistant":"user",
-                content: message.content,
-            })
-           }
+            for (const message of messages) {
+                formattedMessages.push({
+                    type: "text",
+                    role: message.role === "ASSISTANT" ? "assistant" : "user",
+                    content: message.content,
+                })
+            }
 
-           return formattedMessages;
+            return formattedMessages;
         });
 
         const state = createState<AgentState>(
             {
                 summary: "",
-                files:{},
+                files: {},
             },
             {
                 messages: previousMessages,
@@ -246,17 +60,18 @@ export const codeAgentFunction = inngest.createFunction(
 
         const codeAgent = createAgent<AgentState>({
             name: "code-agent",
-            description: "A code agent that can create interactive presentations using HTML, CSS, JavaScript and presentation frameworks like Reveal.js in a sandboxed environment.",
+            description: "A code agent that can create interactive presentations using HTML, CSS, JavaScript and presentation frameworks like impress.js in a sandboxed environment.",
             system: `${PROMPT}.`,
             model: gemini({
-                model: "gemini-2.5-flash",
+                // model: "gemini-2.5-flash",
+                model: "gemini-2.5-pro",
                 defaultParameters: { generationConfig: { temperature: 0.1 } },
             }),
             // model: openai({ model: "gpt-4o" }),
             tools: [
                 createTool({
                     name: "terminal",
-                    description: "Use the terminal to run commands in the sandbox for setting up presentation frameworks and dependencies.",
+                    description: "Use the terminal to run commands, install packages, and test demos.",
                     parameters: z.object({
                         command: z.string(),
                     }) as unknown as AnyZodType,
@@ -275,17 +90,15 @@ export const codeAgentFunction = inngest.createFunction(
                                 });
                                 return result.stdout;
                             } catch (error) {
-                                console.error(
-                                    `Command failed: ${error} \nstdoud: ${buffers.stdout} \nstderr: ${buffers.stderr}`,
-                                );
-                                return `Command failed: ${error} \nstdoud: ${buffers.stdout} \nstderr: ${buffers.stderr}`;
+                                return `Command failed: ${error} \nstdout: ${buffers.stdout} \nstderr: ${buffers.stderr}`;
                             }
                         });
                     }
                 }),
+
                 createTool({
                     name: "createOrUpdateFile",
-                    description: "Create or update files including React components, styles, and other project files.",
+                    description: "Create or update HTML, CSS, JavaScript, Python, and other project files.",
                     parameters: z.object({
                         files: z.array(
                             z.object({
@@ -305,7 +118,7 @@ export const codeAgentFunction = inngest.createFunction(
                                 }
                                 return updatedFiles;
                             } catch (error) {
-                                return "Error :" + error;
+                                return "Error: " + error;
                             }
                         });
                         if (typeof newFiles === "object") {
@@ -313,50 +126,10 @@ export const codeAgentFunction = inngest.createFunction(
                         }
                     }
                 }),
-                createTool({
-                    name: "setupExportCapabilities",
-                    description: "Install and configure packages for PDF and PPTX export functionality.",
-                    parameters: z.object({
-                        exportFormats: z.array(z.enum(['pdf', 'pptx', 'both'])),
-                    }),
-                    handler: async ({ exportFormats }, { step }) => {
-                        return await step?.run("setupExport", async () => {
-                            try {
-                                const sandbox = await getSandbox(sandboxId);
-                                const commands = [];
 
-                                // Base packages for export functionality
-                                if (exportFormats.includes('pdf') || exportFormats.includes('both')) {
-                                    commands.push('npm install html2canvas jspdf --yes');
-                                    commands.push('npm install puppeteer-core --yes');
-                                }
-
-                                if (exportFormats.includes('pptx') || exportFormats.includes('both')) {
-                                    commands.push('npm install pptxgenjs --yes');
-                                    commands.push('npm install file-saver --yes');
-                                }
-
-                                // Interactive presentation packages
-                                commands.push('npm install framer-motion --yes');
-                                commands.push('npm install react-spring --yes');
-                                commands.push('npm install @types/file-saver --yes');
-
-                                let results = [];
-                                for (const command of commands) {
-                                    const result = await sandbox.commands.run(command);
-                                    results.push(result.stdout);
-                                }
-
-                                return `Export packages installed:\n${results.join('\n')}`;
-                            } catch (error) {
-                                return `Error installing export packages: ${error}`;
-                            }
-                        });
-                    }
-                }),
                 createTool({
                     name: "readFiles",
-                    description: "Read presentation files from the sandbox to review or modify existing content.",
+                    description: "Read files from the sandbox to review or modify existing content.",
                     parameters: z.object({
                         files: z.array(z.string()),
                     }),
@@ -373,35 +146,43 @@ export const codeAgentFunction = inngest.createFunction(
                             } catch (error) {
                                 return "Error reading files: " + error;
                             }
-                        })
+                        });
                     },
                 }),
+
+                // Updated setupExportCapabilities (optional - remove if not needed)
                 createTool({
-                    name: "createPresentation",
-                    description: "Create a complete Impress.js presentation deck and write it to public/deck.html",
-                    parameters: CreatePresentationSchema as unknown as AnyZodType,
-                    handler: async ({ deckHtml }, { step, network }: Tool.Options<AgentState>) => {
-                        const newFiles = await step!.run("createPresentation", async () => {
+                    name: "setupExportCapabilities",
+                    description: "Install packages for PDF export and Python demos.",
+                    parameters: z.object({
+                        exportFormats: z.array(z.enum(['pdf', 'python', 'both'])),
+                    }),
+                    handler: async ({ exportFormats }, { step }) => {
+                        return await step?.run("setupExport", async () => {
                             try {
-                                const updatedFiles = network.state.data.files || {};
                                 const sandbox = await getSandbox(sandboxId);
+                                const commands = [];
 
-                                // Write deck.html
-                                await sandbox.files.write("public/deck.html", deckHtml);
-                                updatedFiles["public/deck.html"] = deckHtml;
+                                if (exportFormats.includes('pdf') || exportFormats.includes('both')) {
+                                    commands.push('npm install html2canvas jspdf --yes');
+                                }
 
-                                return updatedFiles;
+                                if (exportFormats.includes('python') || exportFormats.includes('both')) {
+                                    commands.push('pip install numpy matplotlib pandas seaborn plotly requests --break-system-packages');
+                                }
+
+                                let results = [];
+                                for (const command of commands) {
+                                    const result = await sandbox.commands.run(command);
+                                    results.push(result.stdout);
+                                }
+
+                                return `Packages installed:\n${results.join('\n')}`;
                             } catch (error) {
-                                return "Error: " + error;
+                                return `Error installing packages: ${error}`;
                             }
                         });
-
-                        if (typeof newFiles === "object") {
-                            network.state.data.files = newFiles;
-                        }
-
-                        return "Presentation deck created at /deck.html";
-                    },
+                    }
                 }),
             ],
             lifecycle: {
@@ -434,13 +215,13 @@ export const codeAgentFunction = inngest.createFunction(
         })
 
         const result = await network.run(event.data.value, { state });
-        
+
 
         const fragmentTitleGenerator = createAgent({
-            name:"fragment-title-generator",
-            description:"generates title for fragments",
+            name: "fragment-title-generator",
+            description: "generates title for fragments",
             system: PRESENTATION_FRAGMENT_TITLE_PROMPT,
-            model:gemini({
+            model: gemini({
                 model: "gemini-1.5-flash-8b",
             }),
         });
@@ -458,11 +239,11 @@ export const codeAgentFunction = inngest.createFunction(
         const { output: responseOutput } = await responseGenerator.run(result.state.data.summary);
 
 
-    
+
 
 
         const hasDeck = !!result.state.data.files?.["public/deck.html"];
-        const hasLanding = !!result.state.data.files?.["app/page.tsx"];
+        const hasLanding = !!result.state.data.files?.["public/index.html"];
         const hasSummary = !!result.state.data.summary;
 
         console.log("summary:", result.state.data.summary);
@@ -476,9 +257,8 @@ export const codeAgentFunction = inngest.createFunction(
 
         await step.run("start-static-server", async () => {
             const sandbox = await getSandbox(sandboxId);
-            await sandbox.commands.run(
-                'bash -lc "pgrep -f \\"http-server public -p 3000\\" || (npx --yes http-server public -p 3000 -a 0.0.0.0 >/tmp/http.log 2>&1 &)"'
-            );
+            // Use your start_server.sh script instead
+            await sandbox.commands.run('bash /start_server.sh &');
             return "ok";
         });
 
