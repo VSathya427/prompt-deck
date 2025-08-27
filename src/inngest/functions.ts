@@ -153,37 +153,110 @@ export const codeAgentFunction = inngest.createFunction(
                 // Updated setupExportCapabilities (optional - remove if not needed)
                 createTool({
                     name: "setupExportCapabilities",
-                    description: "Install packages for PDF export and Python demos.",
+                    description: "Add a minimal download button that adapts to both light and dark presentations",
                     parameters: z.object({
-                        exportFormats: z.array(z.enum(['pdf', 'python', 'both'])),
                     }),
-                    handler: async ({ exportFormats }, { step }) => {
-                        return await step?.run("setupExport", async () => {
+                    handler: async ({ }, { step }) => {
+                        return await step?.run("setupDownload", async () => {
                             try {
                                 const sandbox = await getSandbox(sandboxId);
-                                const commands = [];
 
-                                if (exportFormats.includes('pdf') || exportFormats.includes('both')) {
-                                    commands.push('npm install html2canvas jspdf --yes');
-                                }
+                                // Install required packages
+                                await sandbox.commands.run('npm install archiver express --save');
 
-                                if (exportFormats.includes('python') || exportFormats.includes('both')) {
-                                    commands.push('pip install numpy matplotlib pandas seaborn plotly requests --break-system-packages');
-                                }
+                                // Create simple download server
+                                const downloadServerScript = `
+                                    const express = require('express');
+                                    const archiver = require('archiver');
+                                    const app = express();
 
-                                let results = [];
-                                for (const command of commands) {
-                                    const result = await sandbox.commands.run(command);
-                                    results.push(result.stdout);
-                                }
+                                    app.use(express.static('public'));
+                                    app.use('/demo', express.static('demo'));
 
-                                return `Packages installed:\n${results.join('\n')}`;
+                                    app.get('/download', (req, res) => {
+                                        const archive = archiver('zip');
+                                        res.attachment('presentation.zip');
+                                        archive.pipe(res);
+                                        archive.directory('public/', 'presentation/');
+                                        if (require('fs').existsSync('demo')) {
+                                            archive.directory('demo/', 'demo/');
+                                        }
+                                        archive.finalize();
+                                    });
+
+                                    app.listen(3001);
+                                    `;
+
+                                await sandbox.files.write('download-server.js', downloadServerScript);
+
+                                // Adaptive download button HTML that works on both light and dark themes
+                                const downloadButtonHTML = `
+                                    <!-- Adaptive Download Button -->
+                                    <div id="download-btn" onclick="downloadPresentation()" 
+                                        title="Download Presentation"
+                                        style="
+                                            position: fixed;
+                                            bottom: 20px;
+                                            left: 50%;
+                                            transform: translateX(-50%);
+                                            z-index: 999999;
+                                            width: 44px;
+                                            height: 44px;
+                                            background: rgba(0, 0, 0, 0.6);
+                                            border: 1px solid rgba(255, 255, 255, 0.3);
+                                            border-radius: 50%;
+                                            cursor: pointer;
+                                            display: flex;
+                                            align-items: center;
+                                            justify-content: center;
+                                            transition: all 0.2s ease;
+                                            backdrop-filter: blur(10px);
+                                            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+                                        "
+                                        onmouseover="this.style.background='rgba(0,0,0,0.8)'; this.style.transform='translateX(-50%) translateY(-2px) scale(1.05)'"
+                                        onmouseout="this.style.background='rgba(0,0,0,0.6)'; this.style.transform='translateX(-50%) translateY(0) scale(1)'"
+                                    >
+                                        <svg width="20" height="20" fill="white" viewBox="0 0 16 16">
+                                            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+                                            <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+                                        </svg>
+                                    </div>
+
+                                    <script>
+                                    async function downloadPresentation() {
+                                        try {
+                                            const response = await fetch('/download');
+                                            const blob = await response.blob();
+                                            const url = URL.createObjectURL(blob);
+                                            const a = document.createElement('a');
+                                            a.href = url;
+                                            a.download = 'presentation.zip';
+                                            a.click();
+                                            URL.revokeObjectURL(url);
+                                        } catch (error) {
+                                            console.error('Download failed:', error);
+                                        }
+                                    }
+                                    </script>
+                                    `;
+
+                                // Add button to deck.html
+                                const deckContent = await sandbox.files.read('public/deck.html');
+                                const updatedContent = deckContent.replace('</body>', `${downloadButtonHTML}\n</body>`);
+                                await sandbox.files.write('public/deck.html', updatedContent);
+
+                                // Start download server
+                                await sandbox.commands.run('node download-server.js &');
+
+                                return `Download button added to presentation.`;
+
                             } catch (error) {
-                                return `Error installing packages: ${error}`;
+                                return `Error adding download button: ${error}`;
                             }
                         });
                     }
                 }),
+
             ],
             lifecycle: {
                 onResponse: async ({ result, network }) => {
