@@ -6,6 +6,7 @@ import { getSandbox, lastAssistantTextMessageContent, parseAgentOutput } from ".
 import { z } from "zod";
 import { PRESENTATION_FRAGMENT_TITLE_PROMPT, PRESENTATION_RESPONSE_PROMPT, PROMPT } from "@/prompt";
 import { prisma } from "@/lib/db";
+import { SANDBOX_TIMEOUT } from "./types";
 
 interface AgentState {
     summary: string;
@@ -19,6 +20,7 @@ export const codeAgentFunction = inngest.createFunction(
         const sandboxId = await step.run("get-sandbox-id", async () => {
             // Use a presentation-focused sandbox environment
             const sandbox = await Sandbox.create("prompt-deck-pynext");
+            await sandbox.setTimeout(SANDBOX_TIMEOUT);
             return sandbox.sandboxId;
         });
 
@@ -35,6 +37,8 @@ export const codeAgentFunction = inngest.createFunction(
                 orderBy: {
                     createdAt: "desc", // TODO: Change to "asc" if ai doesnt understand whats the latest message
                 },
+
+                take: 5,
             });
 
             for (const message of messages) {
@@ -45,7 +49,7 @@ export const codeAgentFunction = inngest.createFunction(
                 })
             }
 
-            return formattedMessages;
+            return formattedMessages.reverse();
         });
 
         const state = createState<AgentState>(
