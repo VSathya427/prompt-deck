@@ -68,7 +68,7 @@ export const codeAgentFunction = inngest.createFunction(
             system: `${PROMPT}.`,
             model: gemini({
                 // model: "gemini-2.5-flash",
-                model: "gemini-2.5-pro",
+                model: "gemini-3.0-pro",
                 defaultParameters: { generationConfig: { temperature: 0.1 } },
             }),
             // model: openai({ model: "gpt-4o" }),
@@ -157,9 +157,8 @@ export const codeAgentFunction = inngest.createFunction(
                 // Updated setupExportCapabilities (optional - remove if not needed)
                 createTool({
                     name: "setupExportCapabilities",
-                    description: "Add a minimal download button that adapts to both light and dark presentations",
-                    parameters: z.object({
-                    }),
+                    description: "Add a minimal download button that works reliably",
+                    parameters: z.object({}),
                     handler: async ({ }, { step }) => {
                         return await step?.run("setupDownload", async () => {
                             try {
@@ -168,89 +167,164 @@ export const codeAgentFunction = inngest.createFunction(
                                 // Install required packages
                                 await sandbox.commands.run('npm install archiver express --save');
 
-                                // Create simple download server
+                                // Create FIXED download server with proper error handling
                                 const downloadServerScript = `
-                                    const express = require('express');
-                                    const archiver = require('archiver');
-                                    const app = express();
+const express = require('express');
+const archiver = require('archiver');
+const fs = require('fs');
+const path = require('path');
 
-                                    app.use(express.static('public'));
-                                    app.use('/demo', express.static('demo'));
+const app = express();
+app.use(express.static('public'));
 
-                                    app.get('/download', (req, res) => {
-                                        const archive = archiver('zip');
-                                        res.attachment('presentation.zip');
-                                        archive.pipe(res);
-                                        archive.directory('public/', 'presentation/');
-                                        if (require('fs').existsSync('demo')) {
-                                            archive.directory('demo/', 'demo/');
-                                        }
-                                        archive.finalize();
-                                    });
+app.get('/download', (req, res) => {
+    console.log('Download request received');
+    
+    const archive = archiver('zip', { zlib: { level: 9 } });
+    
+    // CRITICAL: Add error handling
+    archive.on('error', (err) => {
+        console.error('Archive error:', err);
+        res.status(500).send('Archive error');
+    });
+    
+    archive.on('end', () => {
+        console.log('Archive finished - bytes:', archive.pointer());
+    });
+    
+    // Set headers BEFORE piping
+    res.attachment('presentation.zip');
+    res.setHeader('Content-Type', 'application/zip');
+    
+    // Pipe archive to response
+    archive.pipe(res);
+    
+    // Add files with proper checks
+    try {
+        if (fs.existsSync('public') && fs.statSync('public').isDirectory()) {
+            const publicFiles = fs.readdirSync('public');
+            console.log('Public files found:', publicFiles);
+            if (publicFiles.length > 0) {
+                archive.directory('public/', 'presentation/');
+            } else {
+                archive.append('No presentation files found', { name: 'presentation/readme.txt' });
+            }
+        } else {
+            archive.append('Public directory not found', { name: 'error.txt' });
+        }
+        
+        if (fs.existsSync('demo') && fs.statSync('demo').isDirectory()) {
+            const demoFiles = fs.readdirSync('demo');
+            console.log('Demo files found:', demoFiles);
+            if (demoFiles.length > 0) {
+                archive.directory('demo/', 'demo/');
+            }
+        }
+        
+        // Add basic readme
+        const readme = \`# Presentation Download\\n\\nFiles included:\\n- presentation/ (main files)\\n- demo/ (if applicable)\\n\`;
+        archive.append(readme, { name: 'README.md' });
+        
+    } catch (err) {
+        console.error('File system error:', err);
+        archive.append('Error reading files: ' + err.message, { name: 'error.txt' });
+    }
+    
+    // CRITICAL: Finalize the archive
+    archive.finalize();
+});
 
-                                    app.listen(3001);
-                                    `;
+// Start server with proper port handling
+const port = process.env.PORT || 3001;
+const server = app.listen(port, () => {
+    console.log(\`Download server running on port \${port}\`);
+});
+
+// CRITICAL: Handle process termination properly
+process.on('SIGTERM', () => {
+    console.log('Download server shutting down');
+    server.close();
+});
+`;
 
                                 await sandbox.files.write('download-server.js', downloadServerScript);
 
-                                // Adaptive download button HTML that works on both light and dark themes
+                                // Simple, reliable download button
                                 const downloadButtonHTML = `
-                                    <!-- Adaptive Download Button -->
-                                    <div id="download-btn" onclick="downloadPresentation()" 
-                                        title="Download Presentation"
-                                        style="
-                                            position: fixed;
-                                            bottom: 20px;
-                                            left: 50%;
-                                            transform: translateX(-50%);
-                                            z-index: 999999;
-                                            width: 44px;
-                                            height: 44px;
-                                            background: rgba(0, 0, 0, 0.6);
-                                            border: 1px solid rgba(255, 255, 255, 0.3);
-                                            border-radius: 50%;
-                                            cursor: pointer;
-                                            display: flex;
-                                            align-items: center;
-                                            justify-content: center;
-                                            transition: all 0.2s ease;
-                                            backdrop-filter: blur(10px);
-                                            box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
-                                        "
-                                        onmouseover="this.style.background='rgba(0,0,0,0.8)'; this.style.transform='translateX(-50%) translateY(-2px) scale(1.05)'"
-                                        onmouseout="this.style.background='rgba(0,0,0,0.6)'; this.style.transform='translateX(-50%) translateY(0) scale(1)'"
-                                    >
-                                        <svg width="20" height="20" fill="white" viewBox="0 0 16 16">
-                                            <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
-                                            <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
-                                        </svg>
-                                    </div>
+<!-- Download Button -->
+<div id="download-btn" onclick="downloadPresentation()" 
+     title="Download Presentation"
+     style="
+        position: fixed;
+        bottom: 20px;
+        left: 50%;
+        transform: translateX(-50%);
+        z-index: 999999;
+        width: 44px;
+        height: 44px;
+        background: rgba(0, 0, 0, 0.6);
+        border: 1px solid rgba(255, 255, 255, 0.3);
+        border-radius: 50%;
+        cursor: pointer;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        transition: all 0.2s ease;
+        backdrop-filter: blur(10px);
+        box-shadow: 0 2px 10px rgba(0, 0, 0, 0.2);
+     "
+     onmouseover="this.style.transform='translateX(-50%) scale(1.1)'"
+     onmouseout="this.style.transform='translateX(-50%) scale(1)'"
+>
+    <svg width="20" height="20" fill="white" viewBox="0 0 16 16">
+        <path d="M.5 9.9a.5.5 0 0 1 .5.5v2.5a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-2.5a.5.5 0 0 1 1 0v2.5a2 2 0 0 1-2 2H2a2 2 0 0 1-2-2v-2.5a.5.5 0 0 1 .5-.5z"/>
+        <path d="M7.646 11.854a.5.5 0 0 0 .708 0l3-3a.5.5 0 0 0-.708-.708L8.5 10.293V1.5a.5.5 0 0 0-1 0v8.793L5.354 8.146a.5.5 0 1 0-.708.708l3 3z"/>
+    </svg>
+</div>
 
-                                    <script>
-                                    async function downloadPresentation() {
-                                        try {
-                                            const response = await fetch('/download');
-                                            const blob = await response.blob();
-                                            const url = URL.createObjectURL(blob);
-                                            const a = document.createElement('a');
-                                            a.href = url;
-                                            a.download = 'presentation.zip';
-                                            a.click();
-                                            URL.revokeObjectURL(url);
-                                        } catch (error) {
-                                            console.error('Download failed:', error);
-                                        }
-                                    }
-                                    </script>
-                                    `;
+<script>
+async function downloadPresentation() {
+    const btn = document.getElementById('download-btn');
+    btn.style.opacity = '0.5';
+    
+    try {
+        const response = await fetch('/download');
+        
+        if (!response.ok) {
+            throw new Error(\`HTTP \${response.status}\`);
+        }
+        
+        const blob = await response.blob();
+        console.log('Downloaded blob size:', blob.size);
+        
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = 'presentation.zip';
+        document.body.appendChild(a);
+        a.click();
+        
+        // Cleanup
+        URL.revokeObjectURL(url);
+        document.body.removeChild(a);
+        
+    } catch (error) {
+        console.error('Download failed:', error);
+        alert('Download failed: ' + error.message);
+    } finally {
+        btn.style.opacity = '1';
+    }
+}
+</script>
+`;
 
                                 // Add button to deck.html
                                 const deckContent = await sandbox.files.read('public/deck.html');
                                 const updatedContent = deckContent.replace('</body>', `${downloadButtonHTML}\n</body>`);
                                 await sandbox.files.write('public/deck.html', updatedContent);
 
-                                // Start download server
-                                await sandbox.commands.run('node download-server.js &');
+                                // Start server with timeout protection
+                                await sandbox.commands.run('timeout 5s node download-server.js || node download-server.js &');
 
                                 return `Download button added to presentation.`;
 
